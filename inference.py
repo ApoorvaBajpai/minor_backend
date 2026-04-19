@@ -19,8 +19,8 @@ from transformers import AutoTokenizer, AutoModel, pipeline as hf_pipeline
 # ── Config ──────────────────────────────────────────────────────
 FACIAL_MODEL_PATH  = "models/facial_lstm_best.pt"
 SVM_PIPELINE_PATH  = "models/svm_fusion_pipeline.pkl"
-TEXT_MODEL_NAME    = "distilroberta-base"    
-EMOTION_MODEL_NAME = "m3hrdadfi/vit-tiny-patch16-224-facial-expression"  
+TEXT_MODEL_NAME    = "roberta-base"    # Original high-quality model
+EMOTION_MODEL_NAME = "dima806/facial_emotions_image_detection" # Original high-quality ViT
 
 AU_COLS  = ["AU01","AU02","AU04","AU05","AU06","AU07",
             "AU09","AU10","AU12","AU14","AU15","AU17",
@@ -110,9 +110,18 @@ def analyze_emotions(b64_frames: list) -> dict:
     all_keys = set().union(*[f.keys() for f in frame_results])
     avg = {k: float(np.mean([f.get(k, 0.0) for f in frame_results])) for k in all_keys}
     def g(keys): return sum(avg.get(k, 0.0) for k in keys)
-    sad, fear, disgust, angry = g(["sadness", "sad"]), g(["fear", "fearful"]), g(["disgust", "disgusted"]), g(["angry", "anger", "contempt"])
-    happy, surprise, neutral = g(["happiness", "happy"]), g(["surprise", "surprised"]), g(["neutral"])
-    dep_raw, calm_raw = (sad * 1.0 + fear * 0.7 + disgust * 0.4 + angry * 0.2), (happy * 1.0 + surprise * 0.3 + neutral * 0.5)
+
+    sad     = g(["sad", "sadness"])
+    fear    = g(["fear", "fearful"])
+    disgust = g(["disgust", "disgusted"])
+    angry   = g(["angry", "anger", "angered"])
+    happy   = g(["happy", "happiness"])
+    surprise= g(["surprise", "surprised"])
+    neutral = g(["neutral"])
+
+    # Depression signal: weighted combination
+    dep_raw = (sad * 1.0 + fear * 0.7 + disgust * 0.4 + angry * 0.2)
+    calm_raw = (happy * 1.0 + surprise * 0.3 + neutral * 0.5)
     sig = float(np.clip(dep_raw / (dep_raw + calm_raw + 1e-9), 0.0, 1.0))
     dom = max(avg, key=avg.get)
     return {"available": True, "depression_signal": round(sig, 3), "facial_confidence": round(avg[dom], 3), "dominant_emotion": dom, "facial_note": f"Dominant: {dom}. Signal: {sig*100:.0f}%"}
